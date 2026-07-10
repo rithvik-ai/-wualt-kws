@@ -1,0 +1,22 @@
+# Render Blueprint — one-click provisions the KWS collection server + a persistent
+# disk so every recording is stored centrally in the backend and survives redeploys.
+# Render adds HTTPS + a stable *.onrender.com URL automatically.
+services:
+  - type: web
+    name: wualt-kws-collect
+    runtime: docker
+    plan: starter          # $7/mo — always-on AND supports the persistent disk
+                           # (the free plan spins down after inactivity and has NO disk)
+    healthCheckPath: /
+    disk:
+      name: recordings
+      mountPath: /data     # collect_server writes here (STORAGE_DIR)
+      sizeGB: 1            # ~1 GB holds thousands of clips; raise later if needed
+    envVars:
+      - key: STORAGE_DIR
+        value: /data
+      - key: LANGS
+        value: ta,hi       # prompt both Tamil + Hindi; set to "ta" or "hi" for one
+      - key: EXPORT_TOKEN  # Render generates a secret; use it to download the data:
+        generateValue: true  #   https://<app>.onrender.com/export?token=<this value>
+

@@ -1,0 +1,6 @@
+kws_recordings/
+__pycache__/
+*.pyc
+*.wav
+*.webm
+*.pem
