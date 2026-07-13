@@ -1,13 +1,13 @@
 """
-Prompted KWS data-collection tool. Runs a local web page that shows each emergency
-word, records the speaker saying it (calm + urgent takes), auto-labels by word, and
-saves 16 kHz mono WAV into kws_recordings/<word>/ — ready for the retraining pipeline.
-Audio never leaves this machine.
+Prompted KWS data-collection tool. Serves a mobile-first web page that shows each
+emergency word, records the speaker saying it (calm + urgent takes), auto-labels by
+word, and saves 16 kHz mono WAV into <STORAGE_DIR>/<word>/ — ready for retraining.
 
-    python collect_server.py           # then open http://127.0.0.1:7862
+    python collect_server.py           # local:  http(s)://127.0.0.1:7862
+    gunicorn collect_server:app        # server: reads STORAGE_DIR / PORT / LANGS
 
-Recordings -> Desktop/audio model/kws_recordings/<key>/<speaker>__<take>__<ts>.wav
-Metadata   -> kws_recordings/_manifest.csv
+Recordings -> <STORAGE_DIR>/<key>/<speaker>__<take>__<ts>.wav
+Metadata   -> <STORAGE_DIR>/_manifest.csv
 """
 from __future__ import annotations
 import csv
@@ -54,107 +54,268 @@ for lang in LANGS:
 
 app = Flask(__name__)
 
-PAGE = """<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WUALT KWS Collection</title><style>
-body{font-family:system-ui,Segoe UI,Arial;max-width:640px;margin:0 auto;padding:18px;background:#0f1420;color:#e8ecf3}
-h1{font-size:20px;color:#7fb2ff}.card{background:#182236;border-radius:14px;padding:22px;margin:14px 0}
-input,select,button{font-size:16px;padding:10px;border-radius:9px;border:1px solid #33415e;background:#0f1420;color:#e8ecf3}
-button{cursor:pointer;background:#2d5bd7;border:none;font-weight:600}button:disabled{opacity:.4}
-.rec{background:#d7392d}.big{font-size:44px;font-weight:700;margin:6px 0;color:#fff}
-.gloss{color:#9fb0cf}.take{font-size:15px;letter-spacing:.5px;text-transform:uppercase;margin:10px 0}
-.calm{color:#7fd6a0}.urgent{color:#ff9a6b}.bar{height:8px;background:#26314a;border-radius:6px;overflow:hidden;margin:10px 0}
-.fill{height:100%;background:#2d5bd7;width:0%}.small{font-size:13px;color:#8394b3}.ok{color:#7fd6a0}
+PAGE = r"""<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#4f46e5">
+<title>WUALT Voice · help build a safety device</title>
+<style>
+:root{
+  --bg1:#eef2ff;--bg2:#f8fafc;--card:#fff;--ink:#0f172a;--sub:#64748b;--line:#e6eaf2;
+  --primary:#4f46e5;--primary2:#7c6bf5;--calm:#0ea672;--calm-bg:#e7f7f0;
+  --urgent:#f43f5e;--urgent-bg:#feecef;--ok:#0ea672;--shadow:0 12px 34px rgba(30,32,80,.10);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  color:var(--ink);background:radial-gradient(120% 90% at 50% -10%,#e9ecff 0%,var(--bg2) 55%);}
+.wrap{max-width:460px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;
+  padding:22px 18px calc(24px + env(safe-area-inset-bottom));}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:16px;letter-spacing:-.2px}
+.dot{width:24px;height:24px;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--primary2));
+  box-shadow:0 4px 12px rgba(79,70,229,.35)}
+.screen{display:none;flex:1;flex-direction:column}
+.screen.on{display:flex;animation:in .4s cubic-bezier(.2,.7,.2,1)}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}
+h1{font-size:25px;line-height:1.2;margin:20px 0 6px;letter-spacing:-.5px}
+.lede{color:var(--sub);font-size:15px;line-height:1.5;margin:0 0 22px}
+label{display:block;font-size:13px;font-weight:600;color:var(--sub);margin:16px 0 8px}
+input{width:100%;font-size:16px;padding:14px 15px;border-radius:14px;border:1.5px solid var(--line);
+  background:#fbfcff;color:var(--ink);outline:none;transition:border .2s}
+input:focus{border-color:var(--primary)}
+.chips{display:flex;gap:9px;flex-wrap:wrap}
+.chip{font-size:15px;font-weight:600;padding:11px 16px;border-radius:13px;border:1.5px solid var(--line);
+  background:#fbfcff;color:var(--ink);cursor:pointer;transition:.15s}
+.chip.sel{border-color:var(--primary);background:#eef0ff;color:var(--primary)}
+.btn{width:100%;font-size:17px;font-weight:700;padding:16px;border:none;border-radius:16px;cursor:pointer;
+  color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary2));
+  box-shadow:0 10px 24px rgba(79,70,229,.32);transition:transform .12s,opacity .2s}
+.btn:active{transform:scale(.98)}.btn:disabled{opacity:.45;box-shadow:none}
+.btn.ghost{background:none;color:var(--sub);box-shadow:none;font-weight:600;font-size:15px;padding:12px}
+.note{font-size:12.5px;color:#94a3b8;margin-top:14px;line-height:1.5;text-align:center}
+/* recording screen */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.count{font-size:13px;font-weight:700;color:var(--sub)}
+.track{height:7px;background:#e9edf6;border-radius:99px;overflow:hidden;margin:8px 0 4px}
+.fill{height:100%;width:0;background:linear-gradient(90deg,var(--primary),var(--primary2));
+  border-radius:99px;transition:width .4s cubic-bezier(.2,.7,.2,1)}
+.wordcard{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:10px 6px;gap:6px}
+.cat{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--primary);
+  background:#eef0ff;padding:5px 11px;border-radius:99px}
+.word{font-size:min(15vw,58px);font-weight:800;line-height:1.15;letter-spacing:-1px;margin:6px 0}
+.mean{font-size:16px;color:var(--sub)}
+.take{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;
+  padding:10px 18px;border-radius:14px;margin-top:14px}
+.take.calm{color:var(--calm);background:var(--calm-bg)}
+.take.urgent{color:var(--urgent);background:var(--urgent-bg)}
+/* record button */
+.recwrap{position:relative;width:168px;height:168px;margin:22px auto 6px;display:grid;place-items:center}
+.glow{position:absolute;inset:14px;border-radius:50%;background:radial-gradient(closest-side,rgba(244,63,94,.45),transparent);
+  opacity:0;transform:scale(1);transition:opacity .15s}
+.ring{position:absolute;inset:0;transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:#e9edf6;stroke-width:7}
+.ring-fg{fill:none;stroke:var(--urgent);stroke-width:7;stroke-linecap:round;stroke-dasharray:339;stroke-dashoffset:339}
+.recbtn{position:relative;width:118px;height:118px;border-radius:50%;border:none;cursor:pointer;
+  background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;font-size:44px;
+  box-shadow:0 14px 30px rgba(79,70,229,.4);transition:transform .12s,background .2s;display:grid;place-items:center}
+.recbtn:active{transform:scale(.95)}
+.recbtn.live{background:linear-gradient(135deg,var(--urgent),#fb7185);animation:pulse 1.3s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 14px 30px rgba(244,63,94,.4)}50%{box-shadow:0 14px 46px rgba(244,63,94,.65)}}
+.hint{text-align:center;font-size:13.5px;color:var(--sub);height:20px;margin-top:2px}
+.rowbtns{display:flex;gap:10px;margin-top:8px}
+.rowbtns .btn.ghost{flex:1;border:1.5px solid var(--line);border-radius:14px}
+.toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translate(-50%,20px);
+  background:var(--ink);color:#fff;font-size:14px;font-weight:600;padding:11px 18px;border-radius:99px;
+  opacity:0;transition:.3s;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+/* done */
+.hero-ok{width:96px;height:96px;border-radius:50%;background:var(--calm-bg);color:var(--calm);
+  display:grid;place-items:center;font-size:52px;margin:24px auto 8px;animation:pop .5s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+.center{text-align:center}
 </style></head><body>
-<h1>WUALT — emergency word collection</h1>
-<div class="card" id="setup">
-  <div>Your name / ID <input id="spk" placeholder="e.g. ravi" style="width:60%"></div>
-  <div style="margin-top:10px">Environment
-    <select id="cond"><option>quiet</option><option>noisy</option><option>outdoor</option></select></div>
-  <div style="margin-top:14px"><button onclick="start()">Start recording session</button></div>
-  <div class="small" style="margin-top:8px">Mic permission will be requested. Each word: one CALM take, one URGENT take.</div>
+<div class="wrap">
+  <div class="brand"><span class="dot"></span> WUALT Voice</div>
+
+  <!-- WELCOME -->
+  <section class="screen on" id="s-welcome">
+    <h1>Lend your voice to a<br>safety device.</h1>
+    <p class="lede">Say a few emergency words out loud. Your recordings teach a
+      wearable to recognise a real cry for help — in your language. Takes about
+      5 minutes. Audio is used only for this.</p>
+    <div class="card" style="padding:20px">
+      <label>Your name or nickname</label>
+      <input id="spk" placeholder="e.g. Ravi" autocomplete="off">
+      <div id="langwrap"><label>Which language will you speak?</label>
+        <div class="chips" id="langchips"></div></div>
+      <label>Where are you right now?</label>
+      <div class="chips" id="condchips"></div>
+    </div>
+    <div style="flex:1"></div>
+    <button class="btn" onclick="start()">Start recording</button>
+    <p class="note">🎙️ Your phone will ask to use the microphone — tap Allow.</p>
+  </section>
+
+  <!-- RECORD -->
+  <section class="screen" id="s-rec">
+    <div class="topbar"><span class="count" id="count">0 / 0</span>
+      <span class="count" id="who"></span></div>
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <div class="wordcard">
+      <span class="cat" id="cat">help</span>
+      <div class="word" id="word">—</div>
+      <div class="mean" id="mean"></div>
+      <div class="take calm" id="take">😌 Say it calmly</div>
+      <div class="recwrap">
+        <div class="glow" id="glow"></div>
+        <svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="54"/>
+          <circle class="ring-fg" id="ring" cx="60" cy="60" r="54"/></svg>
+        <button class="recbtn" id="recbtn" onclick="toggle()">🎙️</button>
+      </div>
+      <div class="hint" id="hint">Tap, say the word, it stops on its own</div>
+    </div>
+    <div class="rowbtns">
+      <button class="btn ghost" onclick="redo()">↺ Redo</button>
+      <button class="btn ghost" onclick="skip()">Skip ›</button>
+    </div>
+  </section>
+
+  <!-- BACKGROUND -->
+  <section class="screen" id="s-bg">
+    <div class="wordcard">
+      <span class="cat" style="color:var(--calm);background:var(--calm-bg)">last step</span>
+      <div class="word" style="font-size:34px">Just talk normally</div>
+      <div class="mean">Read anything or chat for ~15 seconds. This teaches it what is
+        <b>not</b> an emergency — it's important.</div>
+      <div class="recwrap">
+        <div class="glow" id="glow2"></div>
+        <svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="54"/>
+          <circle class="ring-fg" id="ring2" cx="60" cy="60" r="54" style="stroke:var(--calm)"/></svg>
+        <button class="recbtn" id="bgbtn" onclick="toggleBg()">🎙️</button>
+      </div>
+      <div class="hint" id="bghint">Tap and keep talking for 15 seconds</div>
+    </div>
+  </section>
+
+  <!-- DONE -->
+  <section class="screen" id="s-done">
+    <div style="flex:1"></div>
+    <div class="hero-ok">✓</div>
+    <h1 class="center">Thank you! 🙌</h1>
+    <p class="lede center">You just recorded <b id="donecount">0</b> takes. Every voice
+      makes the device better at recognising a real emergency.</p>
+    <div style="flex:1"></div>
+    <button class="btn" onclick="location.reload()">Record another person</button>
+  </section>
 </div>
-<div class="card" id="rec" style="display:none">
-  <div class="small"><span id="prog">0/0</span> &middot; speaker <b id="spkn"></b></div>
-  <div class="bar"><div class="fill" id="fill"></div></div>
-  <div class="big" id="word">—</div>
-  <div class="gloss" id="gloss"></div>
-  <div class="take" id="take"></div>
-  <div style="margin-top:10px">
-    <button id="recbtn" onclick="toggle()">● Record</button>
-    <button id="redo" onclick="redo()" disabled>Redo last</button>
-  </div>
-  <div class="small ok" id="status" style="margin-top:10px"></div>
-</div>
-<div class="card" id="bg" style="display:none">
-  <div class="big">Background</div>
-  <div class="gloss">Now just talk normally / read anything for ~15 seconds (this teaches it what is NOT an emergency).</div>
-  <div style="margin-top:12px"><button id="bgbtn" onclick="toggleBg()">● Record background</button></div>
-  <div class="small ok" id="bgstatus" style="margin-top:10px"></div>
-</div>
-<div class="card" id="done" style="display:none"><div class="big ok">✓ Done — thank you!</div>
-  <div class="gloss">Recordings saved. Hand the device to the next person and press Start again.</div>
-  <button onclick="location.reload()" style="margin-top:12px">Next person</button></div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-let words=[], i=0, take="calm", spk="", cond="", mediaRec, chunks=[], stream, recording=false, lastKey="";
+const CIRC = 2*Math.PI*54, DUR = 3500, BGDUR = 15000;
+let allWords=[], words=[], i=0, take="calm", spk="", cond="quiet", langSel=new Set(), saved=0;
+let stream, mediaRec, chunks=[], recording=false, actx, analyser, raf;
+
+function $(id){return document.getElementById(id)}
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$(id).classList.add('on')}
+function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),1400)}
+function buzz(ms){try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}}
+
+async function init(){
+  allWords = await (await fetch('/words')).json();
+  const langs=[...new Set(allWords.map(w=>w.lang))];
+  const LN={ta:'தமிழ் Tamil',hi:'हिन्दी Hindi',en:'English'};
+  const lc=$('langchips');
+  if(langs.length<=1){ langSel=new Set(langs); $('langwrap').style.display='none'; }
+  else langs.forEach(l=>{const b=document.createElement('button');b.className='chip';b.textContent=LN[l]||l;
+    b.onclick=()=>{b.classList.toggle('sel');b.classList.contains('sel')?langSel.add(l):langSel.delete(l)};lc.appendChild(b)});
+  ['quiet','a bit noisy','outdoors'].forEach((c,k)=>{const b=document.createElement('button');
+    b.className='chip'+(k==0?' sel':'');b.textContent=c;b.dataset.v=['quiet','noisy','outdoor'][k];
+    b.onclick=()=>{document.querySelectorAll('#condchips .chip').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel');cond=b.dataset.v};$('condchips').appendChild(b)});
+}
+init();
+
 async function start(){
-  spk=document.getElementById('spk').value.trim()||'anon';
-  cond=document.getElementById('cond').value;
-  try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
-  catch(e){ alert('Microphone permission needed: '+e); return; }
-  words=await (await fetch('/words')).json();
-  document.getElementById('setup').style.display='none';
-  document.getElementById('rec').style.display='block';
-  document.getElementById('spkn').textContent=spk;
-  show();
+  spk=($('spk').value.trim())||'anon';
+  if(langSel.size===0 && $('langwrap').style.display!=='none'){ toast('Pick a language first'); return; }
+  words=allWords.filter(w=>langSel.size===0||langSel.has(w.lang));
+  try{ stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false}}); }
+  catch(e){ alert('The microphone is needed to record. Please allow it and try again.'); return; }
+  actx=new (window.AudioContext||window.webkitAudioContext)();
+  analyser=actx.createAnalyser(); analyser.fftSize=256;
+  actx.createMediaStreamSource(stream).connect(analyser);
+  $('who').textContent=spk; show('s-rec'); render();
 }
-function show(){
-  if(i>=words.length){ document.getElementById('rec').style.display='none'; document.getElementById('bg').style.display='block'; return; }
+function render(){
+  if(i>=words.length){ show('s-bg'); return; }
   const w=words[i];
-  document.getElementById('word').textContent=w.phrase;
-  document.getElementById('gloss').textContent='(“'+w.gloss+'” · '+w.category+')';
-  const t=document.getElementById('take');
-  t.textContent = take==='calm' ? 'Say it CALMLY' : 'Say it URGENTLY — like a real emergency';
-  t.className='take '+(take==='calm'?'calm':'urgent');
-  document.getElementById('prog').textContent=(i*2+(take==='urgent'?1:0))+'/'+(words.length*2);
-  document.getElementById('fill').style.width=((i*2+(take==='urgent'?1:0))/(words.length*2)*100)+'%';
+  $('cat').textContent=w.category; $('word').textContent=w.phrase;
+  $('mean').textContent='"'+w.gloss+'"';
+  const t=$('take'); const calm=take==='calm';
+  t.className='take '+(calm?'calm':'urgent');
+  t.textContent=calm?'😌 Say it calmly':'😰 Now say it URGENTLY — like it\'s real';
+  const done=i*2+(calm?0:1);
+  $('count').textContent=(done+1)+' / '+(words.length*2);
+  $('fill').style.width=(done/(words.length*2)*100)+'%';
+  resetRing('ring');
 }
+function meter(el){
+  const d=new Uint8Array(analyser.frequencyBinCount);
+  (function tick(){ analyser.getByteTimeDomainData(d);
+    let s=0; for(let k=0;k<d.length;k++){const v=(d[k]-128)/128;s+=v*v;}
+    const lvl=Math.min(1,Math.sqrt(s/d.length)*3.2);
+    el.style.opacity=0.2+lvl*0.6; el.style.transform='scale('+(1+lvl*0.55)+')';
+    raf=requestAnimationFrame(tick); })();
+}
+function stopMeter(el){cancelAnimationFrame(raf);el.style.opacity=0;el.style.transform='scale(1)'}
+function runRing(id,dur){const r=$(id);r.style.transition='none';r.style.strokeDashoffset=CIRC;
+  requestAnimationFrame(()=>{r.style.transition='stroke-dashoffset '+dur+'ms linear';r.style.strokeDashoffset=0})}
+function resetRing(id){const r=$(id);r.style.transition='none';r.style.strokeDashoffset=CIRC}
+
 function toggle(){ recording?stop():rec(); }
 function rec(){
-  chunks=[]; mediaRec=new MediaRecorder(stream); recording=true;
-  document.getElementById('recbtn').textContent='■ Stop'; document.getElementById('recbtn').classList.add('rec');
+  chunks=[]; mediaRec=new MediaRecorder(stream); recording=true; buzz(25);
+  if(actx.state==='suspended')actx.resume();
+  $('recbtn').classList.add('live'); $('recbtn').textContent='■'; $('hint').textContent='Listening…';
+  meter($('glow')); runRing('ring',DUR);
   mediaRec.ondataavailable=e=>chunks.push(e.data);
   mediaRec.onstop=()=>upload(new Blob(chunks,{type:'audio/webm'}));
-  mediaRec.start();
-  setTimeout(()=>{ if(recording) stop(); }, 3500); // auto-stop safety
+  mediaRec.start(); clearTimeout(window._st); window._st=setTimeout(()=>{if(recording)stop()},DUR);
 }
-function stop(){ recording=false; document.getElementById('recbtn').textContent='● Record';
-  document.getElementById('recbtn').classList.remove('rec'); if(mediaRec&&mediaRec.state!=='inactive')mediaRec.stop(); }
+function stop(){ recording=false; buzz(15); clearTimeout(window._st);
+  $('recbtn').classList.remove('live'); $('recbtn').textContent='🎙️'; $('hint').textContent='Saving…';
+  stopMeter($('glow')); resetRing('ring'); if(mediaRec&&mediaRec.state!=='inactive')mediaRec.stop(); }
 async function upload(blob){
-  const w=words[i]; lastKey=w.key;
+  const w=words[i];
   const fd=new FormData(); fd.append('audio',blob,'a.webm');
   fd.append('key',w.key); fd.append('category',w.category);
   fd.append('speaker',spk); fd.append('condition',cond); fd.append('take',take);
-  document.getElementById('status').textContent='saving…';
-  await fetch('/save',{method:'POST',body:fd});
-  document.getElementById('status').textContent='✓ saved '+w.phrase+' ('+take+')';
-  document.getElementById('redo').disabled=false;
-  if(take==='calm'){ take='urgent'; } else { take='calm'; i++; }
-  show();
+  try{ await fetch('/save',{method:'POST',body:fd}); saved++; }catch(e){}
+  toast(take==='calm'?'✓ calm take saved':'✓ urgent take saved');
+  $('hint').textContent='Tap, say the word, it stops on its own';
+  if(take==='calm') take='urgent'; else { take='calm'; i++; }
+  render();
 }
-function redo(){ if(take==='urgent'){take='calm';} else {take='urgent'; i--;} show();
-  document.getElementById('status').textContent='redo — record again'; }
-async function toggleBg(){
-  const b=document.getElementById('bgbtn');
-  if(recording){ recording=false; b.textContent='● Record background'; b.classList.remove('rec'); mediaRec.stop(); return; }
-  chunks=[]; mediaRec=new MediaRecorder(stream); recording=true; b.textContent='■ Stop'; b.classList.add('rec');
+function redo(){ if(recording)return; if(take==='urgent')take='calm'; else if(i>0){i--;take='urgent';} render(); toast('Redo this take'); }
+function skip(){ if(recording)return; take='calm'; i++; render(); }
+
+// background
+function toggleBg(){
+  if(recording){ recording=false; clearTimeout(window._bt); $('bgbtn').classList.remove('live'); $('bgbtn').textContent='🎙️';
+    stopMeter($('glow2')); resetRing('ring2'); mediaRec.stop(); return; }
+  chunks=[]; mediaRec=new MediaRecorder(stream); recording=true; buzz(25);
+  $('bgbtn').classList.add('live'); $('bgbtn').textContent='■'; $('bghint').textContent='Keep talking…';
+  meter($('glow2')); runRing('ring2',BGDUR);
   mediaRec.ondataavailable=e=>chunks.push(e.data);
   mediaRec.onstop=async()=>{ const fd=new FormData(); fd.append('audio',new Blob(chunks,{type:'audio/webm'}),'a.webm');
     fd.append('key','_background'); fd.append('category','_background'); fd.append('speaker',spk);
     fd.append('condition',cond); fd.append('take','conversation');
-    await fetch('/save',{method:'POST',body:fd});
-    document.getElementById('bg').style.display='none'; document.getElementById('done').style.display='block'; };
-  mediaRec.start(); setTimeout(()=>{ if(recording) toggleBg(); }, 15000);
+    try{ await fetch('/save',{method:'POST',body:fd}); saved++; }catch(e){}
+    $('donecount').textContent=saved; show('s-done'); buzz([30,60,30]); };
+  mediaRec.start(); window._bt=setTimeout(()=>{if(recording)toggleBg()},BGDUR);
 }
 </script></body></html>"""
 
