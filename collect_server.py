@@ -42,13 +42,23 @@ PORT = int(os.environ.get("PORT", "7862"))
 LANGS = [x.strip() for x in os.environ.get("LANGS", "ta").split(",") if x.strip()]
 
 _LEX = {"ta": TAMIL_EMERGENCY_RAW, "hi": HINDI_EMERGENCY_RAW}
+# ASCII phrases that are English MEANINGS, not pronunciations — skip these when
+# choosing the romanized "how to say it" guide (so we show "kaapathunga", not "save me").
+_ENGLISH_GLOSS = {
+    "help", "help me", "save me", "sos", "please help", "pls help", "please",
+    "doctor", "ambulance", "police", "accident", "fire", "fire accident",
+    "fire service", "emergency", "earthquake", "cyclone", "help me find",
+    "abuse", "violence", "stalking", "harassment", "molest", "rape", "assault", "108",
+}
 PROMPTS = []
 for lang in LANGS:
     lex = _LEX.get(lang, {})
     for key, (phrases, st, sev, cat) in lex.items():
-        native = [p for p in phrases if not p.isascii()]   # script forms only
+        native = [p for p in phrases if not p.isascii()]        # script form (target)
+        roman = [p for p in phrases if p.isascii() and p.lower() not in _ENGLISH_GLOSS]
         if native:
             PROMPTS.append({"key": key, "phrase": native[0], "lang": lang,
+                            "roman": roman[0] if roman else "",  # Latin pronunciation
                             "gloss": key.split("_", 1)[-1].replace("_", " "),
                             "category": cat or "help"})
 
@@ -104,8 +114,10 @@ input:focus{border-color:var(--primary)}
   text-align:center;padding:10px 6px;gap:6px}
 .cat{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--primary);
   background:#eef0ff;padding:5px 11px;border-radius:99px}
-.word{font-size:min(15vw,58px);font-weight:800;line-height:1.15;letter-spacing:-1px;margin:6px 0}
-.mean{font-size:16px;color:var(--sub)}
+.word{font-size:min(14vw,54px);font-weight:800;line-height:1.15;letter-spacing:-1px;margin:4px 0 2px}
+.say{font-size:26px;font-weight:800;color:var(--primary);letter-spacing:.2px}
+.say:before{content:"say:  ";font-size:13px;font-weight:700;color:#a5b0c8;letter-spacing:.5px}
+.mean{font-size:14px;color:var(--sub);font-style:italic;margin-top:2px}
 .take{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;
   padding:10px 18px;border-radius:14px;margin-top:14px}
 .take.calm{color:var(--calm);background:var(--calm-bg)}
@@ -166,6 +178,7 @@ input:focus{border-color:var(--primary)}
     <div class="wordcard">
       <span class="cat" id="cat">help</span>
       <div class="word" id="word">—</div>
+      <div class="say" id="say"></div>
       <div class="mean" id="mean"></div>
       <div class="take calm" id="take">😌 Say it calmly</div>
       <div class="recwrap">
@@ -253,7 +266,8 @@ function render(){
   if(i>=words.length){ show('s-bg'); return; }
   const w=words[i];
   $('cat').textContent=w.category; $('word').textContent=w.phrase;
-  $('mean').textContent='"'+w.gloss+'"';
+  const say=$('say'); if(w.roman){say.textContent=w.roman;say.style.display='block';}else{say.style.display='none';}
+  $('mean').textContent='= '+w.gloss;
   const t=$('take'); const calm=take==='calm';
   t.className='take '+(calm?'calm':'urgent');
   t.textContent=calm?'😌 Say it calmly':'😰 Now say it URGENTLY — like it\'s real';

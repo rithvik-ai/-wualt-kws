@@ -22,12 +22,12 @@ TAMIL_EMERGENCY_RAW = {
                         "யாராச்சும் வாங்க", "yaaravathu help", "yaarachum help", "yaarachum vaanga"],
                        "distress", 88, None),
     # 2. Emergency
-    "ta_emergency": (["அவசரம்", "எமர்ஜென்சி", "emergency"], "distress", 85, None),
+    "ta_emergency": (["அவசரம்", "எமர்ஜென்சி", "avasaram", "emergency"], "distress", 85, None),
     "ta_danger": (["ஆபத்து", "பெரும் ஆபத்து", "உயிர் ஆபத்து", "உயிருக்கு ஆபத்து", "ஆபத்துல இருக்கேன்",
                    "ஆபத்தா இருக்கு", "aabathu", "uyiruku aabathu", "aabathula iruken"],
                   "distress", 88, None),
-    "ta_trouble": (["பிரச்சனை", "பெரிய பிரச்சனை", "சிக்கல்", "கஷ்டம்", "மோசமா இருக்கு"],
-                   "stress", 55, None),
+    "ta_trouble": (["பிரச்சனை", "பெரிய பிரச்சனை", "சிக்கல்", "கஷ்டம்", "மோசமா இருக்கு",
+                    "prachanai", "prachchanai", "kashtam"], "stress", 55, None),
     # 3. Someone attacking
     "ta_hitting": (["அடிக்கிறாங்க", "அடிக்கிறார்", "அடிக்குறாங்க", "அடிச்சுட்டாங்க", "அடிச்சாங்க",
                     "என்னை அடிக்கிறாங்க", "adikiranga", "adikuranga", "enna adikuranga", "enna adikiraanga"],
@@ -42,8 +42,8 @@ TAMIL_EMERGENCY_RAW = {
     "ta_kidnap": (["கடத்துறாங்க", "கடத்திட்டாங்க", "பிடிச்சுட்டாங்க", "பிடிச்சாங்க",
                    "kadathuranga", "kadathitanga", "pidichanga"], "distress", 92, "violence"),
     "ta_forced": (["வலுக்கட்டாயம்", "கட்டிப்போட்டாங்க", "பூட்டிட்டாங்க", "பூட்டி வைச்சிருக்காங்க",
-                   "வெளியே விட மாட்டாங்க", "தப்பிக்க முடியல", "வெளியே போக முடியல", "சிறை வைத்திருக்காங்க"],
-                  "distress", 90, "violence"),
+                   "வெளியே விட மாட்டாங்க", "தப்பிக்க முடியல", "வெளியே போக முடியல", "சிறை வைத்திருக்காங்க",
+                   "valukattayam", "kattipottanga", "thappika mudiyala"], "distress", 90, "violence"),
     # 5. Robbery
     "ta_robbery": (["திருடுறாங்க", "கொள்ளையடிக்கிறாங்க", "கொள்ளை", "பறிச்சுட்டாங்க", "பணம் எடுத்துட்டாங்க",
                     "போன் எடுத்துட்டாங்க", "பை எடுத்துட்டாங்க", "thiruduranga", "kollai"],
@@ -80,17 +80,18 @@ TAMIL_EMERGENCY_RAW = {
     # 12. Domestic violence
     "ta_domestic": (["வீட்டுல அடிக்கிறாங்க", "கணவர் அடிக்கிறார்", "மனைவி அடிக்கிறாங்க", "அப்பா அடிக்கிறார்",
                      "அம்மா அடிக்கிறாங்க", "வீட்டுல சண்டை", "குடும்ப வன்முறை", "கொடுமை", "துன்புறுத்துறாங்க",
-                     "துன்புறுத்தல்", "abuse", "violence"], "distress", 88, "violence"),
+                     "துன்புறுத்தல்", "veettula adikuranga", "kodumai", "abuse", "violence"],
+                    "distress", 88, "violence"),
     # 13. Sexual danger
     "ta_sexual": (["பாலியல் தொல்லை", "கற்பழிப்பு", "பலாத்காரம்", "கையை பிடிச்சாங்க", "தவறா தொடுறாங்க",
-                   "பின்தொடருறாங்க", "தொந்தரவு", "stalking", "harassment", "molest", "rape", "assault"],
-                  "distress", 93, "violence"),
+                   "பின்தொடருறாங்க", "தொந்தரவு", "paaliyal thollai", "karpazhippu",
+                   "stalking", "harassment", "molest", "rape", "assault"], "distress", 93, "violence"),
     # 14. Fear
     "ta_fear": (["ரொம்ப பயமா இருக்கு", "பயமா இருக்கு", "பயந்துட்டேன்", "என்ன பண்ணறது தெரியல",
                  "bayama iruku", "bayanthutten"], "distress", 80, None),
     # 15. Calling someone
-    "ta_police": (["போலீஸ் கூப்பிடுங்க", "போலீஸை கூப்பிடுங்க", "காவல்துறை", "போலீஸ்", "police"],
-                  "distress", 90, None),
-    "ta_ambulance": (["ஆம்புலன்ஸ்", "ambulance", "டாக்டர்", "doctor", "108", "fire service"],
-                     "distress", 92, "medical"),
+    "ta_police": (["போலீஸ் கூப்பிடுங்க", "போலீஸை கூப்பிடுங்க", "காவல்துறை", "போலீஸ்",
+                   "polis kuppidunga", "kaavalthurai", "police"], "distress", 90, None),
+    "ta_ambulance": (["ஆம்புலன்ஸ்", "டாக்டர்", "ambulans", "daaktar", "ambulance", "doctor",
+                      "108", "fire service"], "distress", 92, "medical"),
 }
