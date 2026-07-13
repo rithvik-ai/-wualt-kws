@@ -115,9 +115,10 @@ input:focus{border-color:var(--primary)}
 .cat{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--primary);
   background:#eef0ff;padding:5px 11px;border-radius:99px}
 .word{font-size:min(14vw,54px);font-weight:800;line-height:1.15;letter-spacing:-1px;margin:4px 0 2px}
-.say{font-size:26px;font-weight:800;color:var(--primary);letter-spacing:.2px}
-.say:before{content:"say:  ";font-size:13px;font-weight:700;color:#a5b0c8;letter-spacing:.5px}
-.mean{font-size:14px;color:var(--sub);font-style:italic;margin-top:2px}
+.say{font-size:23px;font-weight:800;color:var(--primary);letter-spacing:.2px}
+.say:before{content:"Pronounced: ";font-size:13px;font-weight:600;color:#94a3b8;letter-spacing:.2px}
+.mean{font-size:15px;font-weight:700;color:var(--sub);margin-top:4px}
+.mean:before{content:"Means: ";font-size:13px;font-weight:600;color:#94a3b8;letter-spacing:.2px}
 .take{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;
   padding:10px 18px;border-radius:14px;margin-top:14px}
 .take.calm{color:var(--calm);background:var(--calm-bg)}
@@ -153,10 +154,11 @@ input:focus{border-color:var(--primary)}
 
   <!-- WELCOME -->
   <section class="screen on" id="s-welcome">
-    <h1>Lend your voice to a<br>safety device.</h1>
-    <p class="lede">Say a few emergency words out loud. Your recordings teach a
-      wearable to recognise a real cry for help — in your language. Takes about
-      5 minutes. Audio is used only for this.</p>
+    <h1>Your voice could help<br>protect someone else.</h1>
+    <p class="lede">Record a few emergency phrases to help train Wualt to recognise
+      genuine distress across different languages and accents. It takes about 5
+      minutes, and your recording stays private and is only used to improve our
+      voice detection.</p>
     <div class="card" style="padding:20px">
       <label>Your name or nickname</label>
       <input id="spk" placeholder="e.g. Ravi" autocomplete="off">
@@ -187,7 +189,7 @@ input:focus{border-color:var(--primary)}
           <circle class="ring-fg" id="ring" cx="60" cy="60" r="54"/></svg>
         <button class="recbtn" id="recbtn" onclick="toggle()">🎙️</button>
       </div>
-      <div class="hint" id="hint">Tap, say the word, it stops on its own</div>
+      <div class="hint" id="hint">Tap the mic and say the word once. We'll stop recording automatically.</div>
     </div>
     <div class="rowbtns">
       <button class="btn ghost" onclick="redo()">↺ Redo</button>
@@ -267,7 +269,7 @@ function render(){
   const w=words[i];
   $('cat').textContent=w.category; $('word').textContent=w.phrase;
   const say=$('say'); if(w.roman){say.textContent=w.roman;say.style.display='block';}else{say.style.display='none';}
-  $('mean').textContent='= '+w.gloss;
+  $('mean').textContent=w.gloss.charAt(0).toUpperCase()+w.gloss.slice(1);
   const t=$('take'); const calm=take==='calm';
   t.className='take '+(calm?'calm':'urgent');
   t.textContent=calm?'😌 Say it calmly':'😰 Now say it URGENTLY — like it\'s real';
@@ -309,7 +311,7 @@ async function upload(blob){
   fd.append('speaker',spk); fd.append('condition',cond); fd.append('take',take);
   try{ await fetch('/save',{method:'POST',body:fd}); saved++; }catch(e){}
   toast(take==='calm'?'✓ calm take saved':'✓ urgent take saved');
-  $('hint').textContent='Tap, say the word, it stops on its own';
+  $('hint').textContent="Tap the mic and say the word once. We'll stop recording automatically.";
   if(take==='calm') take='urgent'; else { take='calm'; i++; }
   render();
 }
