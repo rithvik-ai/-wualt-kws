@@ -401,11 +401,32 @@ def save():
 
 @app.route("/stats")
 def stats():
-    counts = {}
+    per_phrase = {}
     for d in REC.iterdir():
         if d.is_dir():
-            counts[d.name] = len(list(d.glob("*.wav")))
-    return jsonify({"total_wavs": sum(counts.values()), "per_word": counts})
+            n = len(list(d.glob("*.wav"))) + len(list(d.glob("*.webm")))
+            if n:
+                per_phrase[d.name] = n
+    per_person, recent = {}, []
+    if MANIFEST.exists():
+        with open(MANIFEST, encoding="utf-8") as m:
+            rows = [r for r in csv.DictReader(m)]
+        for r in rows:
+            spk = r.get("speaker", "anon")
+            per_person[spk] = per_person.get(spk, 0) + 1
+        for r in reversed(rows[-30:]):          # last 30 entries, newest first
+            ts = str(r.get("ts", ""))
+            when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(int(ts) / 1000)) if ts.isdigit() else ts
+            recent.append({"person": r.get("speaker"), "phrase": r.get("key"),
+                           "take": r.get("take"), "condition": r.get("condition"), "when": when})
+    return jsonify({
+        "people": len(per_person),
+        "recordings": sum(per_phrase.values()),
+        "phrases_covered": f"{len(per_phrase)}/{_TOTAL_PROMPTS}",
+        "per_person": dict(sorted(per_person.items(), key=lambda x: -x[1])),
+        "per_phrase": per_phrase,
+        "recent": recent,
+    })
 
 
 @app.route("/export")
