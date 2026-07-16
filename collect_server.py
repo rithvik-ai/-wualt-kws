@@ -62,6 +62,23 @@ for lang in LANGS:
                             "gloss": key.split("_", 1)[-1].replace("_", " "),
                             "category": cat or "help"})
 
+# Optional SHARDING — split the phrase list across N collectors so (e.g.) 3 people
+# each record a third. Set SHARD="1of3" / "2of3" / "3of3" per hosted instance.
+# Round-robin (every Nth phrase), NOT a contiguous block, so each shard gets a
+# balanced mix of languages and categories. Recordings from all shards merge cleanly
+# on export (storage is per-phrase folder, and the shards are disjoint).
+_TOTAL_PROMPTS = len(PROMPTS)
+SHARD_INDEX, SHARD_TOTAL = 0, 1
+_SHARD = os.environ.get("SHARD", "").lower().replace(" ", "")
+if "of" in _SHARD:
+    try:
+        _i, _n = (int(x) for x in _SHARD.split("of"))
+        if _n > 1 and 1 <= _i <= _n:
+            SHARD_INDEX, SHARD_TOTAL = _i - 1, _n
+            PROMPTS = [p for i, p in enumerate(PROMPTS) if i % SHARD_TOTAL == SHARD_INDEX]
+    except ValueError:
+        pass
+
 app = Flask(__name__)
 
 PAGE = r"""<!doctype html><html lang="en"><head>
@@ -155,6 +172,8 @@ input:focus{border-color:var(--primary)}
   <!-- WELCOME -->
   <section class="screen on" id="s-welcome">
     <h1>Your voice could help<br>protect someone else.</h1>
+    <div id="shardnote" style="font-size:13px;font-weight:700;color:var(--primary);
+      letter-spacing:.3px;margin:4px 0 0"></div>
     <p class="lede">Record a few emergency phrases to help train Wualt to recognise
       genuine distress across different languages and accents. It takes about 5
       minutes, and your recording stays private and is only used to improve our
@@ -239,7 +258,10 @@ function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');
 function buzz(ms){try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}}
 
 async function init(){
-  allWords = await (await fetch('/words')).json();
+  const r = await (await fetch('/words')).json();
+  allWords = r.words;
+  if(r.shards>1){ const h=document.getElementById('shardnote');
+    if(h) h.textContent='Set '+r.shard+' of '+r.shards+' · '+r.count+' phrases'; }
   const langs=[...new Set(allWords.map(w=>w.lang))];
   const LN={ta:'தமிழ் Tamil',hi:'हिन्दी Hindi',en:'English'};
   const lc=$('langchips');
@@ -343,7 +365,8 @@ def index():
 
 @app.route("/words")
 def words():
-    return jsonify(PROMPTS)
+    return jsonify({"words": PROMPTS, "shard": SHARD_INDEX + 1, "shards": SHARD_TOTAL,
+                    "count": len(PROMPTS), "total": _TOTAL_PROMPTS})
 
 
 @app.route("/save", methods=["POST"])
